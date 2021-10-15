@@ -170,7 +170,7 @@ status open
 
 \begin_layout Plain Layout
 
-srun -N 1 -c 40 ./galaxy_sequential ../common/RealGalaxies_100k_arcmin.txt 
+srun -N 1 -c 1 ./galaxy_sequential ../common/RealGalaxies_100k_arcmin.txt 
 \end_layout
 
 \begin_layout Plain Layout
