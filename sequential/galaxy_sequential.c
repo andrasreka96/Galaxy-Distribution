@@ -6,7 +6,7 @@
 
 float *real_rasc, *real_decl, *rand_rasc, *rand_decl;
 long int MemoryAllocatedCPU = 0L;
-int numberOfGalaxies = 100000;
+long int numberOfGalaxies = 100000;
 
 int main(int argc, char* argv[]) 
     {
