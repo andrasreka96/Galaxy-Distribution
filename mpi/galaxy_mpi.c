@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
 
  
   float *real_rasc, *real_decl, *rand_rasc, *rand_decl, *real_rasc_partial;
-  long int numberOfGalaxies = 1000;
+  long int numberOfGalaxies = 100000;
   int num_of_angle_intervals = 360;
   float quantum_reciprocal = 4;
   float radian_to_angle = 180 / acosf(-1.0f);
