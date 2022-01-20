@@ -39,7 +39,6 @@ int main(int argc, char* argv[])
   rand_decl = (float *)calloc(numberOfGalaxies, sizeof(float));
 
   if ( parseargs_readinput(argc, argv, numberOfGalaxies, real_rasc, real_decl, rand_rasc, rand_decl) != 0 ) {printf("   Program stopped.\n");return(0);}
-    printf("   Input data read, now calculating histograms\n");
 
   //init global histograms, these will store the result of reduce
   long int histogram_DD_g[360] = {0L};
@@ -51,8 +50,6 @@ int main(int argc, char* argv[])
   long int histogram_DD_l[360] = {0L};
   long int histogram_DR_l[360] = {0L};
   long int histogram_RR_l[360] = {0L};
-
-  printf("--------------%f", real_rasc[1]);
 
   /* Start measuring time */
   if (myid == 0) {
@@ -67,8 +64,12 @@ int main(int argc, char* argv[])
   if(myid%3 == 0){
     //calculates DR
 
+    //every processes knows where to start the calculations according to it's id
     int starti = (myid/3) * (numberOfGalaxies/p0_n);
-    for(int i=starti; i<starti+numberOfGalaxies/p0_n && i<numberOfGalaxies; ++i)
+    //every processes knows where to end the calculatetions according to the total number of processes calculation DR
+    int endi = (myid/3 + 1 == p0_n) ? numberOfGalaxies : starti+numberOfGalaxies/p0_n;
+    printf("%d process calculates DR from %d until %d. There are %d processes calculating DR\n", myid, starti, endi, p0_n);
+    for(int i=starti; i<endi; ++i)
         for(int j=0; j<numberOfGalaxies; ++j){
           float angle = angle_between(real_rasc[i], real_decl[i], rand_rasc[j], rand_decl[j]) * radian_to_angle;
           ++histogram_DR_l[ (int)(angle*quantum_reciprocal)];
@@ -79,8 +80,12 @@ int main(int argc, char* argv[])
     //calculates DD
 
 
+    //every processes knows where to start the calculations according to it's id
     int starti = (myid/3) * (numberOfGalaxies/p1_n);
-    for(int i=starti; i<starti+numberOfGalaxies/p1_n && i<numberOfGalaxies; ++i)       
+    //every processes knows where to end the calculatetions according to the total number of processes calcualting DD
+    int endi = (myid/3 + 1 == p1_n) ? numberOfGalaxies : starti+numberOfGalaxies/p1_n;
+    printf("%d process calculates DD from %d until %d. There are %d processes calculating DD\n", myid, starti, endi, p1_n);
+    for(int i=starti; i<endi; ++i)       
       for(int j=i+1; j<numberOfGalaxies; ++j){
         float angle = angle_between(real_rasc[i], real_decl[i], real_rasc[j], real_decl[j]) * radian_to_angle;
         histogram_DD_l[ (int)(angle*quantum_reciprocal)] += 2;
@@ -91,8 +96,13 @@ int main(int argc, char* argv[])
       
     //calculates RR
 
+    //every processes knows where to start the calculations according to it's id
     int starti = (myid/3) * (numberOfGalaxies/p2_n);
-    for(int i=starti; i<starti+numberOfGalaxies/p2_n && i<numberOfGalaxies; ++i)
+    //every processes knows where to end the calculations according to the total number of processes calculating RR
+    int endi = (myid/3 + 1 == p2_n) ? numberOfGalaxies : starti+numberOfGalaxies/p2_n;
+    printf("%d process calculates RR from %d until %d. There are %d processes calculating RR\n", myid, starti, endi, p2_n);
+
+    for(int i=starti; i<endi; ++i)
         for(int j=i+1; j<numberOfGalaxies; ++j){
           float angle = angle_between(rand_rasc[i], rand_decl[i], rand_rasc[j], rand_decl[j]) * radian_to_angle;
           histogram_RR_l[ (int)(angle*quantum_reciprocal)] += 2;
