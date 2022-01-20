@@ -56,8 +56,11 @@ int main(int argc, char* argv[])
     starttime = MPI_Wtime();
   }
 
+  //number of processes calculating DR
   int p0_n = (np-1)/3 + 1;
+  //number of processes calculating DD
   int p1_n = (np-2)/3 + 1;
+  //number of processes calculating RR
   int p2_n = (np-3)/3 + 1;
 
 
