@@ -1,143 +1,208 @@
-// on dione, first load the cuda module
-//    module load cuda
-//
-// compile your program with
-//    nvcc -O3 -arch=sm_70 --ptxas-options=-v -o galaxy galaxy_cuda.cu -lm
-//
-// run your program with 
-//    srun -p gpu -c 1 --mem=10G ./galaxy_cuda RealGalaxies_100k_arcmin.dat SyntheticGalaxies_100k_arcmin.dat omega.out
-
-
-
-#include <cuda.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
 #include <sys/time.h>
 
+
+//histogram size
+size_t HIST_SIZE = 360 * sizeof(unsigned long long int);
+//galaxy number
+long int N = 1000;
+//input data
 int    NoofReal;
 int    NoofRand;
 float *real_rasc, *real_decl;
 float *rand_rasc, *rand_decl;
-
-long *histogramDR, *histogramDD, *histogramRR;
-
 long int CPUMemory = 0L;
 long int GPUMemory = 0L;
-
-int totaldegrees = 360;
-int binsperdegree = 4;
-
-// put here your GPU kernel(s) to calculate the histograms
-
-//__global__ void  fillHistogram(..) {}
+int  readdata(char *, char *);
 
 
-int main(int argc, char *argv[])
+__global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD, unsigned long long int *RR, float *real_rasc, float *real_decl, float *rand_rasc, float *rand_decl, int N)
 {
-   int    readdata(char *argv1, char *argv2);
-   long int histogramDRsum, histogramDDsum, histogramRRsum;
-   double start, end, kerneltime, walltime;
-   struct timeval _ttime;
-   struct timezone _tzone;
-   int getDevice(void);
 
-   FILE *outfil;
+   int blockId = blockIdx.x
+      + blockIdx.y * gridDim.x
+      + gridDim.x * gridDim.y * blockIdx.z;
 
-   if ( argc != 4 ) {printf("Usage: a.out real_data random_data output_data\n");return(-1);}
+   int threadId = blockId*(blockDim.x*blockDim.y*blockDim.z)
+      + (threadIdx.z *(blockDim.x * blockDim.y))
+      + (threadIdx.y * blockDim.x)
+      + threadIdx.x;
 
-   gettimeofday(&_ttime, &_tzone);
-   walltime = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
+   if (threadId >= 2*N*N) return;
 
-   if ( readdata(argv[1], argv[2]) != 0 ) return(-1);
+   //calculate DR
+   // printf("Thread id: %d\n", threadId);
+   if (threadId < N * N){
+      // printf("Calculate DR (%d, %d) pair from total %d\n", threadId/N, threadId%N, N);
 
-// For your entertainment: some performance parameters of the GPU you are running your programs on!
-   if ( getDevice() != 0 ) return(-1);
+      float acos_in = sin(real_decl[threadId/N])*sin(rand_decl[threadId%N])+cos(real_decl[threadId/N])*cos(rand_decl[threadId%N])*cos(real_rasc[threadId/N]-rand_rasc[threadId%N]);
+      if (acos_in >= 0)
+         acos_in = fmin(acos_in,1);
+      else
+         acos_in = fmax(acos_in,-1);
+      
+      atomicAdd(&DR[(int)(acos(acos_in) * 180 / acosf(-1.0f)*4)], 1);
+   }else{
 
-   histogramDR = (long int *)calloc(totaldegrees*binsperdegree+1L,sizeof(long int));
-   histogramDD = (long int *)calloc(totaldegrees*binsperdegree+1L,sizeof(long int));
-   histogramRR = (long int *)calloc(totaldegrees*binsperdegree+1L,sizeof(long int));
-   CPUMemory += 3L*(totaldegrees*binsperdegree+1L)*sizeof(long int);
-   
-   
+      int i = (threadId - N*N)/N;
+      int j = threadId % N;
+
+      if (i == j) return;
+
+      if (i < j){
+         // compute DD
+
+         // printf("Calculate DD (%d, %d) pair from total %d\n", i, j, N);
+
+         float acos_in = sin(real_decl[i])*sin(real_decl[j])+cos(real_decl[i])*cos(real_decl[j])*cos(real_rasc[i]-real_rasc[j]);
+         if (acos_in >= 0)
+            acos_in = fmin(acos_in,1);
+         else
+            acos_in = fmax(acos_in,-1);
+         
+         atomicAdd(&DD[(int)(acos(acos_in)* 180 / acosf(-1.0f) * 4)], 2);
+
+      }
+      else{
+         // compute RR
+
+         // printf("Calculate RR (%d, %d) pair from total %d\n", j, i, N);
+
+         float acos_in = sin(rand_decl[j])*sin(rand_decl[i])+cos(rand_decl[j])*cos(rand_decl[i])*cos(rand_rasc[j]-rand_rasc[i]);
+         if (acos_in >= 0)
+            acos_in = fmin(acos_in,1);
+         else
+            acos_in = fmax(acos_in,-1);
+         
+         atomicAdd(&RR[(int)(acos(acos_in)* 180 / acosf(-1.0f) *  4)], 2);
+
+      }
+
+   }
+
+}
+void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigned long long int *RR)
+{
+   unsigned long long int *histogramDR_gpu, *histogramDD_gpu, *histogramRR_gpu;
+   float *real_rasc_gpu, *real_decl_gpu;
+   float *rand_rasc_gpu, *rand_decl_gpu;
+   int *n;
+  
    // input data is available in the arrays float real_rasc[], real_decl[], rand_rasc[], rand_decl[];
    // allocate memory on the GPU for input data and histograms
-   // and initialize the data on GPU by copying the real and rand data to the GPU
+
+   cudaMalloc(&real_rasc_gpu, N * sizeof(float));
+   cudaMalloc(&real_decl_gpu, N * sizeof(float));
+   cudaMalloc(&rand_rasc_gpu, N * sizeof(float));
+   cudaMalloc(&rand_decl_gpu, N * sizeof(float));
    
+   // the number of galaxies is needed because of the work distribution logic
+   cudaMalloc((void**)&n, sizeof(int));
 
-   // call the GPU kernel(s) that fill the three histograms
+   cudaMalloc((void **)&histogramDR_gpu, HIST_SIZE);
+   cudaMalloc((void **)&histogramDD_gpu, HIST_SIZE);
+   cudaMalloc((void **)&histogramRR_gpu, HIST_SIZE);
+   cudaMemset(histogramDR_gpu, 0, HIST_SIZE);
+   cudaMemset(histogramDD_gpu, 0, HIST_SIZE);
+   cudaMemset(histogramRR_gpu, 0, HIST_SIZE);
 
+   // and initialize the data on GPU by copying the real and rand data to the GPU
+   cudaMemcpy(real_rasc_gpu, real_rasc, N * sizeof(float), cudaMemcpyHostToDevice);
+   cudaMemcpy(real_decl_gpu, real_decl, N * sizeof(float), cudaMemcpyHostToDevice);
+   cudaMemcpy(rand_rasc_gpu, rand_rasc, N * sizeof(float), cudaMemcpyHostToDevice);
+   cudaMemcpy(rand_decl_gpu, rand_decl, N * sizeof(float), cudaMemcpyHostToDevice);
 
+   cudaMemcpy(n, &N, sizeof(int), cudaMemcpyHostToDevice);
 
-   return(0);
+   long int threadsInBlock = 32*32;
+   long int blocksInGrid = ( 2*N*N + threadsInBlock - 1 )/threadsInBlock;
+   // blocksInGrid *= N;
+   printf("Size of the blocks in grid: %ld\nThread number in each block:%ld\n",  blocksInGrid, threadsInBlock );
+   calcHist<<<  blocksInGrid, threadsInBlock >>>(histogramDR_gpu,histogramDD_gpu,histogramRR_gpu, real_rasc_gpu, real_decl_gpu, rand_rasc_gpu, rand_decl_gpu, N);
 
+   //move back the results from the gpu memory
+   cudaMemcpy(DR, histogramDR_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
+   cudaMemcpy(DD, histogramDD_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
+   cudaMemcpy(RR, histogramRR_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
+// galaxie distance of itself will be 0    
+  
+}
 
+int main(int argc, char** argv){
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-// checking to see if your histograms have the right number of entries
-   histogramDRsum = 0L;
-   for ( int i = 0; i < binsperdegree*totaldegrees;++i ) histogramDRsum += histogramDR[i];
-   printf("   DR histogram sum = %ld\n",histogramDRsum);
-   if ( histogramDRsum != 10000000000L ) {printf("   Incorrect histogram sum, exiting..\n");return(0);}
-
-   histogramDDsum = 0L;
-   for ( int i = 0; i < binsperdegree*totaldegrees;++i )
-        histogramDDsum += histogramDD[i];
-   printf("   DD histogram sum = %ld\n",histogramDDsum);
-   if ( histogramDDsum != 10000000000L ) {printf("   Incorrect histogram sum, exiting..\n");return(0);}
-
-   histogramRRsum = 0L;
-   for ( int i = 0; i < binsperdegree*totaldegrees;++i )
-        histogramRRsum += histogramRR[i];
-   printf("   RR histogram sum = %ld\n",histogramRRsum);
-   if ( histogramRRsum != 10000000000L ) {printf("   Incorrect histogram sum, exiting..\n");return(0);}
-
-
-   printf("   Omega values:");
-
-   outfil = fopen(argv[3],"w");
-   if ( outfil == NULL ) {printf("Cannot open output file %s\n",argv[3]);return(-1);}
-   fprintf(outfil,"bin start\tomega\t        hist_DD\t        hist_DR\t        hist_RR\n");
-   for ( int i = 0; i < binsperdegree*totaldegrees; ++i )
-       {
-       if ( histogramRR[i] > 0 )
-          {
-          double omega =  (histogramDD[i]-2*histogramDR[i]+histogramRR[i])/((double)(histogramRR[i]));
-
-          fprintf(outfil,"%6.3f\t%15lf\t%15ld\t%15ld\t%15ld\n",((float)i)/binsperdegree, omega,
-             histogramDD[i], histogramDR[i], histogramRR[i]);
-          if ( i < 5 ) printf("   %6.4lf",omega);
-          }
-       else
-          if ( i < 5 ) printf("         ");
-       }
-
-   printf("\n");
-
-   fclose(outfil);
-
-   printf("   Results written to file %s\n",argv[3]);
-   printf("   CPU memory allocated  = %.2lf MB\n",CPUMemory/1000000.0);
-   printf("   GPU memory allocated  = %.2lf MB\n",GPUMemory/1000000.0);
+   struct timeval _ttime;
+   struct timezone _tzone;
 
    gettimeofday(&_ttime, &_tzone);
-   walltime = (double)(_ttime.tv_sec) + (double)(_ttime.tv_usec/1000000.0) - walltime;
+   double time_start = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
 
-   printf("   Total wall clock time = %.2lf s\n", walltime);
+   //read real and random galaxies
+   if ( readdata(argv[1], argv[2]) != 0 ) return(-1);
 
-   return(0);
+   // init global histogram arrays
+   unsigned long long int *histogramDR, *histogramDD, *histogramRR;
+
+   //allocate memory for the global histograms
+   histogramDR=(unsigned long long int *) malloc(HIST_SIZE);
+   histogramDD=(unsigned long long int *) malloc(HIST_SIZE);
+   histogramRR=(unsigned long long int *) malloc(HIST_SIZE);
+
+   //run the GPU kernel
+   calcHistWrep(histogramDR, histogramDD, histogramRR);
+
+   // galaxie distance of itself will be 0    
+   histogramDD[0] += N;
+   histogramRR[0] += N;    
+   
+   // check point: the sum of all historgram entries should be galaxy_num**2 
+   long int histsum = 0L;
+    histsum = 0L;
+    for ( int i = 0; i < 360; ++i ) histsum += histogramDR[i];
+    printf("   Histogram DR : sum = %ld\n",histsum);
+    if ( histsum != N*N ) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
+
+    histsum = 0L;
+    for ( int i = 0; i < 360; ++i ) histsum += histogramDD[i];
+    printf("   Histogram DD : sum = %ld\n",histsum);
+    if ( histsum != (N*N)) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
+
+    histsum = 0L;
+    for ( int i = 0; i < 360; ++i ) histsum += histogramRR[i];
+    printf("   Histogram RR : sum = %ld\n",histsum);
+    if ( histsum != (N*N)) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
+
+
+    printf("   Omega values for the histograms:\n");
+    float omega[360];
+    for ( int i = 0; i < 10; ++i ) 
+        if ( histogramRR[i] != 0L )
+           {
+           omega[i] = (histogramDD[i] - 2L*histogramDR[i] + histogramRR[i])/((float)(histogramRR[i]));
+           if ( i < 10 ) printf("      angle %.2f deg. -> %.2f deg. : %.3f\n", i*0.25, (i+1)*0.25, omega[i]);
+           }
+
+    FILE *out_file = fopen(argv[3],"w");
+    if ( out_file == NULL ) printf("   ERROR: Cannot open output file %s\n",argv[3]);
+    else
+       {
+       for ( int i = 0; i < 360; ++i ) 
+           if ( histogramRR[i] != 0L )
+              fprintf(out_file,"%.2f  : %.3f\n", i*0.25, omega[i] ); 
+       fclose(out_file);
+       printf("   Omega values written to file %s\n",argv[3]);
+       }
+
+    free(real_rasc); free(real_decl);
+    free(rand_rasc); free(rand_decl);
+
+    gettimeofday(&_ttime, &_tzone);
+    double time_end = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
+
+    printf("   Wall clock run time    = %.1lf secs\n",time_end - time_start);
+
+   return 0;
+
 }
 
 int readdata(char *argv1, char *argv2)
@@ -242,50 +307,3 @@ int readdata(char *argv1, char *argv2)
 
   return(0);
 }
-
-
-
-
-int getDevice(void)
-{
-
-  int deviceCount;
-  cudaGetDeviceCount(&deviceCount);
-  printf("   Found %d CUDA devices\n",deviceCount);
-  if ( deviceCount < 0 || deviceCount > 128 ) return(-1);
-  int device;
-  for (device = 0; device < deviceCount; ++device) {
-       cudaDeviceProp deviceProp;
-       cudaGetDeviceProperties(&deviceProp, device);
-       printf("      Device %s                  device %d\n", deviceProp.name,device);
-       printf("         compute capability           =         %d.%d\n", deviceProp.major, deviceProp.minor);
-       printf("         totalGlobalMemory            =        %.2lf GB\n", deviceProp.totalGlobalMem/1000000000.0);
-       printf("         l2CacheSize                  =    %8d B\n", deviceProp.l2CacheSize);
-       printf("         regsPerBlock                 =    %8d\n", deviceProp.regsPerBlock);
-       printf("         multiProcessorCount          =    %8d\n", deviceProp.multiProcessorCount);
-       printf("         maxThreadsPerMultiprocessor  =    %8d\n", deviceProp.maxThreadsPerMultiProcessor);
-       printf("         sharedMemPerBlock            =    %8d B\n", (int)deviceProp.sharedMemPerBlock);
-       printf("         warpSize                     =    %8d\n", deviceProp.warpSize);
-       printf("         clockRate                    =    %8.2lf MHz\n", deviceProp.clockRate/1000.0);
-       printf("         maxThreadsPerBlock           =    %8d\n", deviceProp.maxThreadsPerBlock);
-       printf("         asyncEngineCount             =    %8d\n", deviceProp.asyncEngineCount);
-       printf("         f to lf performance ratio    =    %8d\n", deviceProp.singleToDoublePrecisionPerfRatio);
-       printf("         maxGridSize                  =    %d x %d x %d\n",
-                          deviceProp.maxGridSize[0], deviceProp.maxGridSize[1], deviceProp.maxGridSize[2]);
-       printf("         maxThreadsDim                =    %d x %d x %d\n",
-                          deviceProp.maxThreadsDim[0], deviceProp.maxThreadsDim[1], deviceProp.maxThreadsDim[2]);
-       printf("         concurrentKernels            =    ");
-       if(deviceProp.concurrentKernels==1) printf("     yes\n"); else printf("    no\n");
-       printf("         deviceOverlap                =    %8d\n", deviceProp.deviceOverlap);
-       if(deviceProp.deviceOverlap == 1)
-       printf("            Concurrently copy memory/execute kernel\n");
-       }
-
-    cudaSetDevice(0);
-    cudaGetDevice(&device);
-    if ( device != 0 ) printf("   Unable to set device 0, using %d instead",device);
-    else printf("   Using CUDA device %d\n\n", device);
-
-return(0);
-}
-
