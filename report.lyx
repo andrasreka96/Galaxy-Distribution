@@ -372,7 +372,7 @@ For the calculation of DD and RR histograms we need
 \begin_inset Formula $i,j$
 \end_inset
 
- pairs, but we apply them ina different way.
+ pairs, but we apply them in a different way.
  When 
 \begin_inset Formula $i<j$
 \end_inset
@@ -381,7 +381,7 @@ For the calculation of DD and RR histograms we need
 \begin_inset Formula $i>j$
 \end_inset
 
- we calcualte the RR histogram, and we terminate the process when 
+ we calculate the RR histogram, and we terminate the process when 
 \begin_inset Formula $i=j$
 \end_inset
 
