@@ -6,7 +6,7 @@
 //histogram size
 size_t HIST_SIZE = 360 * sizeof(unsigned long long int);
 //galaxy number
-long int N = 1000;
+long int N = 100;
 //input data
 int    NoofReal;
 int    NoofRand;
@@ -90,8 +90,7 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    int *n;
   
    // input data is available in the arrays float real_rasc[], real_decl[], rand_rasc[], rand_decl[];
-   // allocate memory on the GPU for input data and histograms
-
+   // allocate memory on the GPU for input data
    cudaMalloc(&real_rasc_gpu, N * sizeof(float));
    cudaMalloc(&real_decl_gpu, N * sizeof(float));
    cudaMalloc(&rand_rasc_gpu, N * sizeof(float));
@@ -100,6 +99,7 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    // the number of galaxies is needed because of the work distribution logic
    cudaMalloc((void**)&n, sizeof(int));
 
+    // allocate memory on the GPU for histograms
    cudaMalloc((void **)&histogramDR_gpu, HIST_SIZE);
    cudaMalloc((void **)&histogramDD_gpu, HIST_SIZE);
    cudaMalloc((void **)&histogramRR_gpu, HIST_SIZE);
@@ -107,17 +107,15 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    cudaMemset(histogramDD_gpu, 0, HIST_SIZE);
    cudaMemset(histogramRR_gpu, 0, HIST_SIZE);
 
-   // and initialize the data on GPU by copying the real and rand data to the GPU
+   // initialize the data on GPU by copying the real and rand data to the GPU
    cudaMemcpy(real_rasc_gpu, real_rasc, N * sizeof(float), cudaMemcpyHostToDevice);
    cudaMemcpy(real_decl_gpu, real_decl, N * sizeof(float), cudaMemcpyHostToDevice);
    cudaMemcpy(rand_rasc_gpu, rand_rasc, N * sizeof(float), cudaMemcpyHostToDevice);
    cudaMemcpy(rand_decl_gpu, rand_decl, N * sizeof(float), cudaMemcpyHostToDevice);
-
    cudaMemcpy(n, &N, sizeof(int), cudaMemcpyHostToDevice);
 
    long int threadsInBlock = 32*32;
    long int blocksInGrid = ( 2*N*N + threadsInBlock - 1 )/threadsInBlock;
-   // blocksInGrid *= N;
    printf("Size of the blocks in grid: %ld\nThread number in each block:%ld\n",  blocksInGrid, threadsInBlock );
    calcHist<<<  blocksInGrid, threadsInBlock >>>(histogramDR_gpu,histogramDD_gpu,histogramRR_gpu, real_rasc_gpu, real_decl_gpu, rand_rasc_gpu, rand_decl_gpu, N);
 
@@ -125,7 +123,6 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    cudaMemcpy(DR, histogramDR_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
    cudaMemcpy(DD, histogramDD_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
    cudaMemcpy(RR, histogramRR_gpu, HIST_SIZE, cudaMemcpyDeviceToHost);
-// galaxie distance of itself will be 0    
   
 }
 
@@ -154,6 +151,12 @@ int main(int argc, char** argv){
    // galaxie distance of itself will be 0    
    histogramDD[0] += N;
    histogramRR[0] += N;    
+
+    gettimeofday(&_ttime, &_tzone);
+    double time_end = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
+
+    printf("   Wall clock run time    = %.1lf secs\n",time_end - time_start);
+
    
    // check point: the sum of all historgram entries should be galaxy_num**2 
    long int histsum = 0L;
@@ -178,7 +181,7 @@ int main(int argc, char** argv){
     for ( int i = 0; i < 10; ++i ) 
         if ( histogramRR[i] != 0L )
            {
-           omega[i] = (histogramDD[i] - 2L*histogramDR[i] + histogramRR[i])/((float)(histogramRR[i]));
+           omega[i] = ((long long int)histogramDD[i] - 2L*(long long int)histogramDR[i] + (long long int)histogramRR[i])/((float)(histogramRR[i]));
            if ( i < 10 ) printf("      angle %.2f deg. -> %.2f deg. : %.3f\n", i*0.25, (i+1)*0.25, omega[i]);
            }
 
@@ -195,11 +198,6 @@ int main(int argc, char** argv){
 
     free(real_rasc); free(real_decl);
     free(rand_rasc); free(rand_decl);
-
-    gettimeofday(&_ttime, &_tzone);
-    double time_end = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
-
-    printf("   Wall clock run time    = %.1lf secs\n",time_end - time_start);
 
    return 0;
 
