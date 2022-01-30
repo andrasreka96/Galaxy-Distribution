@@ -6,7 +6,7 @@
 //histogram size
 size_t HIST_SIZE = 360 * sizeof(unsigned long long int);
 //galaxy number
-long int N = 100;
+long int N = 10000;
 //input data
 int    NoofReal;
 int    NoofRand;
@@ -19,7 +19,6 @@ int  readdata(char *, char *);
 
 __global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD, unsigned long long int *RR, float *real_rasc, float *real_decl, float *rand_rasc, float *rand_decl, int N)
 {
-
    int blockId = blockIdx.x
       + blockIdx.y * gridDim.x
       + gridDim.x * gridDim.y * blockIdx.z;
@@ -29,10 +28,11 @@ __global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD,
       + (threadIdx.y * blockDim.x)
       + threadIdx.x;
 
+   // printf("Thread id: %d\n", threadId);
+
    if (threadId >= 2*N*N) return;
 
    //calculate DR
-   // printf("Thread id: %d\n", threadId);
    if (threadId < N * N){
       // printf("Calculate DR (%d, %d) pair from total %d\n", threadId/N, threadId%N, N);
 
@@ -152,12 +152,7 @@ int main(int argc, char** argv){
    histogramDD[0] += N;
    histogramRR[0] += N;    
 
-    gettimeofday(&_ttime, &_tzone);
-    double time_end = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
-
-    printf("   Wall clock run time    = %.1lf secs\n",time_end - time_start);
-
-   
+    
    // check point: the sum of all historgram entries should be galaxy_num**2 
    long int histsum = 0L;
     histsum = 0L;
@@ -179,7 +174,7 @@ int main(int argc, char** argv){
     printf("   Omega values for the histograms:\n");
     float omega[360];
     for ( int i = 0; i < 10; ++i ) 
-        if ( histogramRR[i] != 0L )
+        if ( (long long int)histogramRR[i] != 0LL )
            {
            omega[i] = ((long long int)histogramDD[i] - 2L*(long long int)histogramDR[i] + (long long int)histogramRR[i])/((float)(histogramRR[i]));
            if ( i < 10 ) printf("      angle %.2f deg. -> %.2f deg. : %.3f\n", i*0.25, (i+1)*0.25, omega[i]);
@@ -190,7 +185,7 @@ int main(int argc, char** argv){
     else
        {
        for ( int i = 0; i < 360; ++i ) 
-           if ( histogramRR[i] != 0L )
+           if ( (long long int)histogramRR[i] != 0LL )
               fprintf(out_file,"%.2f  : %.3f\n", i*0.25, omega[i] ); 
        fclose(out_file);
        printf("   Omega values written to file %s\n",argv[3]);
@@ -198,6 +193,12 @@ int main(int argc, char** argv){
 
     free(real_rasc); free(real_decl);
     free(rand_rasc); free(rand_decl);
+
+    gettimeofday(&_ttime, &_tzone);
+    double time_end = (double)_ttime.tv_sec + (double)_ttime.tv_usec/1000000.;
+
+    printf("   Wall clock run time    = %.1lf secs\n",time_end - time_start);
+
 
    return 0;
 
