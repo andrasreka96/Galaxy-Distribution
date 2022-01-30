@@ -91,6 +91,10 @@
 Galaxy Distribution Problem
 \end_layout
 
+\begin_layout Author
+András Réka
+\end_layout
+
 \begin_layout Standard
 Real data of 100000 galaxies and the same size of randomly positioned synthetic
  galaxies are given.
@@ -140,7 +144,7 @@ Four different solution of the calculations will be given: one sequential
 \begin_inset Float figure
 wide false
 sideways false
-status open
+status collapsed
 
 \begin_layout Plain Layout
 \align center
@@ -156,6 +160,42 @@ status open
 \end_inset
 
 
+\end_layout
+
+\begin_layout Standard
+We can apply further optimizations by applying the properties of the distance
+ (denoted by 
+\begin_inset Formula $D$
+\end_inset
+
+) relation.
+ We know that 
+\begin_inset Formula $D(g,g)=0$
+\end_inset
+
+ and we also know that it is a symmetric relation, since 
+\begin_inset Formula $D(g,g')=D(g',g)$
+\end_inset
+
+, where 
+\begin_inset Formula $g,g'\epsilon G$
+\end_inset
+
+ and 
+\begin_inset Formula $G$
+\end_inset
+
+ denotes the set of galaxies.
+ In the consequence of those properties we can reduce the calculations in
+ the 
+\begin_inset Formula $DD$
+\end_inset
+
+ and 
+\begin_inset Formula $RR$
+\end_inset
+
+ histograms.
 \end_layout
 
 \begin_layout Subsection*
@@ -227,8 +267,159 @@ Number of threads = 40
 
 \end_layout
 
-\begin_layout Standard
-to be continued...
+\begin_layout Subsection*
+OpenMPI
+\end_layout
+
+\begin_layout Itemize
+work distribution: there are three main groups of processes based on 
+\begin_inset Formula $ID\%3$
+\end_inset
+
+.
+ Each group calculates its histogram.
+ Inside the groups the calculations are distributed based on process id's
+ and the total number of processes.
+\end_layout
+
+\begin_layout Itemize
+run command: 
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+srun -n 40 --mpi=pmi2 galaxy_mpi ../common/RealGalaxies_100k_arcmin.txt
+\end_layout
+
+\begin_layout Plain Layout
+
+../common/SyntheticGalaxies_100k_arcmin.txt omega.out 
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+run time: 133.3 s
+\end_layout
+
+\begin_layout Itemize
+Number of processes = 40
+\end_layout
+
+\begin_layout Itemize
+\begin_inset Formula $S_{40}=16.21$
+\end_inset
+
+
+\end_layout
+
+\begin_layout Subsection*
+CUDA
+\end_layout
+
+\begin_layout Itemize
+work distribution: In total we have to perform 
+\begin_inset Formula $2*N*N$
+\end_inset
+
+ distance calculations, where 
+\begin_inset Formula $N$
+\end_inset
+
+ is the total number of galaxies.
+ Threads with 
+\begin_inset Formula $ID<N*N$
+\end_inset
+
+ calculate the DR histogram.
+ Since we can think of the 
+\begin_inset Formula $i,j$
+\end_inset
+
+ indexes of two nested loops, where 
+\begin_inset Formula $i,j$
+\end_inset
+
+ goes from 
+\begin_inset Formula $0\rightarrow N$
+\end_inset
+
+ as the Cartesian product of the set 
+\begin_inset Formula $S=\{0,1,2,..,N\}$
+\end_inset
+
+.
+ We can generate the same pairs by using only one index, in this case the
+ thread ID's: 
+\begin_inset Formula 
+\[
+\{(id/N,id\%N)\mid id<N*N\}
+\]
+
+\end_inset
+
+For the calculation of DD and RR histograms we need 
+\begin_inset Formula $N*N$
+\end_inset
+
+ times thread in total.
+ We can use the previous process two generate the 
+\begin_inset Formula $i,j$
+\end_inset
+
+ pairs, but we apply them ina different way.
+ When 
+\begin_inset Formula $i<j$
+\end_inset
+
+ we calculate the DD histogram, when 
+\begin_inset Formula $i>j$
+\end_inset
+
+ we calcualte the RR histogram, and we terminate the process when 
+\begin_inset Formula $i=j$
+\end_inset
+
+.
+ 
+\end_layout
+
+\begin_layout Itemize
+run command: 
+\begin_inset listings
+inline false
+status open
+
+\begin_layout Plain Layout
+
+srun -p gpu -c 1 --mem=10G ./galaxy ../common/RealGalaxies_100k_arcmin.txt 
+\end_layout
+
+\begin_layout Plain Layout
+
+../common/SyntheticGalaxies_100k_arcmin.txt omega.out
+\end_layout
+
+\end_inset
+
+
+\end_layout
+
+\begin_layout Itemize
+run time: 5.3 s
+\end_layout
+
+\begin_layout Itemize
+Thread number in each block:1024 
+\end_layout
+
+\begin_layout Itemize
+Size of the blocks in grid: 19531250 
 \end_layout
 
 \end_body
