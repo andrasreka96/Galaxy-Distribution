@@ -25,7 +25,7 @@ int main(int argc, char* argv[])
 
  
   float *real_rasc, *real_decl, *rand_rasc, *rand_decl, *real_rasc_partial;
-  long int numberOfGalaxies = 100000;
+  long int numberOfGalaxies = 10000;
   int num_of_angle_intervals = 360;
   float quantum_reciprocal = 4;
   float radian_to_angle = 180 / acosf(-1.0f);
@@ -71,7 +71,7 @@ int main(int argc, char* argv[])
     int starti = (myid/3) * (numberOfGalaxies/p0_n);
     //every processes knows where to end the calculatetions according to the total number of processes calculation DR
     int endi = (myid/3 + 1 == p0_n) ? numberOfGalaxies : starti+numberOfGalaxies/p0_n;
-    printf("%d process calculates DR from %d until %d. There are %d processes calculating DR\n", myid, starti, endi, p0_n);
+    // printf("%d process calculates DR from %d until %d. There are %d processes calculating DR\n", myid, starti, endi, p0_n);
     for(int i=starti; i<endi; ++i)
         for(int j=0; j<numberOfGalaxies; ++j){
           float angle = angle_between(real_rasc[i], real_decl[i], rand_rasc[j], rand_decl[j]) * radian_to_angle;
@@ -87,7 +87,7 @@ int main(int argc, char* argv[])
     int starti = (myid/3) * (numberOfGalaxies/p1_n);
     //every processes knows where to end the calculatetions according to the total number of processes calcualting DD
     int endi = (myid/3 + 1 == p1_n) ? numberOfGalaxies : starti+numberOfGalaxies/p1_n;
-    printf("%d process calculates DD from %d until %d. There are %d processes calculating DD\n", myid, starti, endi, p1_n);
+    // printf("%d process calculates DD from %d until %d. There are %d processes calculating DD\n", myid, starti, endi, p1_n);
     for(int i=starti; i<endi; ++i)       
       for(int j=i+1; j<numberOfGalaxies; ++j){
         float angle = angle_between(real_rasc[i], real_decl[i], real_rasc[j], real_decl[j]) * radian_to_angle;
@@ -103,7 +103,7 @@ int main(int argc, char* argv[])
     int starti = (myid/3) * (numberOfGalaxies/p2_n);
     //every processes knows where to end the calculations according to the total number of processes calculating RR
     int endi = (myid/3 + 1 == p2_n) ? numberOfGalaxies : starti+numberOfGalaxies/p2_n;
-    printf("%d process calculates RR from %d until %d. There are %d processes calculating RR\n", myid, starti, endi, p2_n);
+    // printf("%d process calculates RR from %d until %d. There are %d processes calculating RR\n", myid, starti, endi, p2_n);
 
     for(int i=starti; i<endi; ++i)
         for(int j=i+1; j<numberOfGalaxies; ++j){
@@ -169,8 +169,13 @@ int main(int argc, char* argv[])
     free(real_rasc); free(real_decl);
     free(rand_rasc); free(rand_decl);
 
+    endtime = MPI_Wtime();          // Stop measuring time
+    printf("Wall clock time = %f s\n", endtime-starttime);	       
+
 
     }
+
+
     MPI_Finalize();
 
     
