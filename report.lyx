@@ -411,7 +411,7 @@ srun -p gpu -c 1 --mem=10G ./galaxy ../common/RealGalaxies_100k_arcmin.txt
 \end_layout
 
 \begin_layout Itemize
-run time: 5.3 s
+run time: 17.4 secs
 \end_layout
 
 \begin_layout Itemize

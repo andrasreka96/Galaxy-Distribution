@@ -6,7 +6,7 @@
 //histogram size
 size_t HIST_SIZE = 360 * sizeof(unsigned long long int);
 //galaxy number
-long int N = 10000;
+long int N = 100000;
 //input data
 int    NoofReal;
 int    NoofRand;
@@ -17,13 +17,13 @@ long int GPUMemory = 0L;
 int  readdata(char *, char *);
 
 
-__global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD, unsigned long long int *RR, float *real_rasc, float *real_decl, float *rand_rasc, float *rand_decl, int N)
+__global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD, unsigned long long int *RR, float *real_rasc, float *real_decl, float *rand_rasc, float *rand_decl, long int N)
 {
-   int blockId = blockIdx.x
+   long int blockId = blockIdx.x
       + blockIdx.y * gridDim.x
       + gridDim.x * gridDim.y * blockIdx.z;
 
-   int threadId = blockId*(blockDim.x*blockDim.y*blockDim.z)
+   long int threadId = blockId*(blockDim.x*blockDim.y*blockDim.z)
       + (threadIdx.z *(blockDim.x * blockDim.y))
       + (threadIdx.y * blockDim.x)
       + threadIdx.x;
@@ -45,8 +45,8 @@ __global__  void calcHist(unsigned long long int *DR,unsigned long long int *DD,
       atomicAdd(&DR[(int)(acos(acos_in) * 180 / acosf(-1.0f)*4)], 1);
    }else{
 
-      int i = (threadId - N*N)/N;
-      int j = threadId % N;
+      long int i = (threadId - N*N)/N;
+      long int j = threadId % N;
 
       if (i == j) return;
 
@@ -87,7 +87,7 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    unsigned long long int *histogramDR_gpu, *histogramDD_gpu, *histogramRR_gpu;
    float *real_rasc_gpu, *real_decl_gpu;
    float *rand_rasc_gpu, *rand_decl_gpu;
-   int *n;
+   long int *n;
   
    // input data is available in the arrays float real_rasc[], real_decl[], rand_rasc[], rand_decl[];
    // allocate memory on the GPU for input data
@@ -97,7 +97,7 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    cudaMalloc(&rand_decl_gpu, N * sizeof(float));
    
    // the number of galaxies is needed because of the work distribution logic
-   cudaMalloc((void**)&n, sizeof(int));
+   cudaMalloc((void**)&n, sizeof(long int));
 
     // allocate memory on the GPU for histograms
    cudaMalloc((void **)&histogramDR_gpu, HIST_SIZE);
@@ -112,8 +112,8 @@ void calcHistWrep(unsigned long long int *DR,unsigned long long int *DD, unsigne
    cudaMemcpy(real_decl_gpu, real_decl, N * sizeof(float), cudaMemcpyHostToDevice);
    cudaMemcpy(rand_rasc_gpu, rand_rasc, N * sizeof(float), cudaMemcpyHostToDevice);
    cudaMemcpy(rand_decl_gpu, rand_decl, N * sizeof(float), cudaMemcpyHostToDevice);
-   cudaMemcpy(n, &N, sizeof(int), cudaMemcpyHostToDevice);
-
+   cudaMemcpy(n, &N, sizeof(long int), cudaMemcpyHostToDevice);
+ 
    long int threadsInBlock = 32*32;
    long int blocksInGrid = ( 2*N*N + threadsInBlock - 1 )/threadsInBlock;
    printf("Size of the blocks in grid: %ld\nThread number in each block:%ld\n",  blocksInGrid, threadsInBlock );
@@ -155,12 +155,7 @@ int main(int argc, char** argv){
     
    // check point: the sum of all historgram entries should be galaxy_num**2 
    long int histsum = 0L;
-    histsum = 0L;
-    for ( int i = 0; i < 360; ++i ) histsum += histogramDR[i];
-    printf("   Histogram DR : sum = %ld\n",histsum);
-    if ( histsum != N*N ) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
 
-    histsum = 0L;
     for ( int i = 0; i < 360; ++i ) histsum += histogramDD[i];
     printf("   Histogram DD : sum = %ld\n",histsum);
     if ( histsum != (N*N)) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
@@ -170,6 +165,10 @@ int main(int argc, char** argv){
     printf("   Histogram RR : sum = %ld\n",histsum);
     if ( histsum != (N*N)) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
 
+    histsum = 0L;
+    for ( int i = 0; i < 360; ++i ) histsum += histogramDR[i];
+    printf("   Histogram DR : sum = %ld\n",histsum);
+    if ( histsum != N*N ) {printf("   Histogram sums should be %ld. Ending program prematurely\n", N*N);return(0);}
 
     printf("   Omega values for the histograms:\n");
     float omega[360];
